@@ -48,6 +48,11 @@ What you get over calling the SDK yourself:
   `maxProviderCallsForAdd()` tells you the worst-case call count so you can
   budget before calling.
 
+[![How the Supermemory Convex component works: your app calls the component, mutations write component tables and schedule jobs, jobs talk to Supermemory, queries stay reactive](https://raw.githubusercontent.com/waynesutton/supermemory-convex-component/main/docs/diagrams/how-the-component-works.png)](https://raw.githubusercontent.com/waynesutton/supermemory-convex-component/main/docs/diagrams/how-the-component-works.png)
+
+Click the diagram for the full-size image. There's also a
+[PDF](docs/diagrams/how-the-component-works.pdf).
+
 A community component by [Wayne Sutton](https://github.com/waynesutton). Not an
 official Convex or Supermemory package.
 
