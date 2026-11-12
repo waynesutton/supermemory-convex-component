@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 (2026-11-12)
+
+- Listed in the Convex components directory. README now shows the directory badge, so the npm page picks it up.
+- `package.json` repository field in the object form npm expects.
+
 ## 0.1.0 (2026-11-12)
 
 - Supermemory component with `add`, `get`, `list`, `count`, `remove`, `refreshStatus`, `search`, `profile` and namespace deletion.

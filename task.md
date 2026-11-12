@@ -16,4 +16,4 @@
 - [x] Publish `@waynesutton/convex-supermemory` 0.1.0 to npm
 - [x] Host the demo: https://whimsical-buzzard-500.convex.site
 - [x] Set production Turnstile keys
-- [ ] Screenshots, then submit to the components directory
+- [x] Listed in the components directory: https://www.convex.dev/components/waynesutton/convex-supermemory

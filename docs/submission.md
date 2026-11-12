@@ -37,8 +37,7 @@ record until Supermemory confirms them.
 - [x] Published to npm: https://www.npmjs.com/package/@waynesutton/convex-supermemory
 - [x] Demo hosted at https://whimsical-buzzard-500.convex.site
 - [x] Production Turnstile keys set (widget "Supermemory Convex component demo")
-- [ ] Screenshots from the hosted demo
-- [ ] Submitted at https://www.convex.dev/components
+- [x] Submitted and approved: https://www.convex.dev/components/waynesutton/convex-supermemory
 
 ## Launch post draft
 
