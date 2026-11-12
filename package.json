@@ -1,10 +1,10 @@
 {
   "name": "@waynesutton/convex-supermemory",
   "description": "Supermemory as a Convex component: durable ingestion, status tracking, search, profiles, and namespace cleanup.",
-  "repository": "github:waynesutton/convex-supermemory",
-  "homepage": "https://github.com/waynesutton/convex-supermemory#readme",
+  "repository": "github:waynesutton/supermemory-convex-component",
+  "homepage": "https://github.com/waynesutton/supermemory-convex-component#readme",
   "bugs": {
-    "url": "https://github.com/waynesutton/convex-supermemory/issues"
+    "url": "https://github.com/waynesutton/supermemory-convex-component/issues"
   },
   "version": "0.1.0",
   "license": "MIT",

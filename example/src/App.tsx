@@ -4,7 +4,7 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { ConvexError } from "convex/values";
 import { api } from "../convex/_generated/api";
 
-const REPO_URL = "https://github.com/waynesutton/convex-supermemory";
+const REPO_URL = "https://github.com/waynesutton/supermemory-convex-component";
 const NPM_URL = "https://www.npmjs.com/package/@waynesutton/convex-supermemory";
 
 type Status = NonNullable<ReturnType<typeof useStatus>>;

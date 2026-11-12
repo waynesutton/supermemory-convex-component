@@ -6,7 +6,7 @@ Draft materials. Nothing here has been submitted.
 
 - **Name:** Supermemory
 - **Package:** `@waynesutton/convex-supermemory`
-- **Repo:** https://github.com/waynesutton/convex-supermemory (to be created)
+- **Repo:** https://github.com/waynesutton/supermemory-convex-component 
 - **Author:** Wayne Sutton (community component)
 - **License:** MIT
 - **Category:** AI
@@ -33,7 +33,7 @@ record until Supermemory confirms them.
 - [x] README section between the directory include markers
 - [x] Example app that installs the bundled package
 - [x] Live smoke test against Supermemory (add, process, search, delete, hourly reset)
-- [ ] Repo created on Wayne's GitHub and pushed
+- [x] Repo created on Wayne's GitHub and pushed
 - [ ] Published to npm
 - [ ] Demo hosted with production Turnstile keys
 - [ ] Screenshots from the hosted demo
