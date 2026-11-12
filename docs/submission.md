@@ -34,7 +34,7 @@ record until Supermemory confirms them.
 - [x] Example app that installs the bundled package
 - [x] Live smoke test against Supermemory (add, process, search, delete, hourly reset)
 - [x] Repo created on Wayne's GitHub and pushed
-- [ ] Published to npm
+- [x] Published to npm: https://www.npmjs.com/package/@waynesutton/convex-supermemory
 - [x] Demo hosted at https://whimsical-buzzard-500.convex.site
 - [x] Production Turnstile keys set (widget "Supermemory Convex component demo")
 - [ ] Screenshots from the hosted demo
