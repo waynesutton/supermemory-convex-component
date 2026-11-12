@@ -1,0 +1,269 @@
+// Apps call these as `components.supermemory.namespaces.<fn>`.
+import { v } from "convex/values";
+import {
+  internalAction,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server.js";
+import { internal } from "./_generated/api.js";
+import {
+  MAX_DELETE_ATTEMPTS,
+  MAX_RETRY_ROUNDS,
+  assertNamespace,
+  backoffMs,
+  createClient,
+  describeError,
+  isRetryable,
+  statusCodeOf,
+} from "./provider.js";
+
+// Documents can be 50k characters; 25 keeps a batch far from read limits.
+const PURGE_BATCH = 25;
+// One more delete after the first succeeds, for ingests that land late.
+const SWEEP_DELAY_MS = 10 * 60_000;
+
+const vDeletionStatus = v.union(
+  v.literal("pending"),
+  v.literal("deleted"),
+  v.literal("failed"),
+);
+
+/**
+ * Deletes every document in a namespace, here and in Supermemory. Local rows
+ * go in batches, then the remote namespace is deleted with retries.
+ */
+export const deleteNamespace = mutation({
+  args: { namespace: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    assertNamespace(args.namespace);
+    const existing = await ctx.db
+      .query("namespaceDeletions")
+      .withIndex("by_namespace", (q) => q.eq("namespace", args.namespace))
+      .unique();
+    if (existing?.status === "pending") return null;
+    const fields = {
+      status: "pending" as const,
+      attempts: 0,
+      rounds: 0,
+      error: undefined,
+      requestedAt: Date.now(),
+      completedAt: undefined,
+    };
+    if (existing) {
+      await ctx.db.patch("namespaceDeletions", existing._id, fields);
+    } else {
+      await ctx.db.insert("namespaceDeletions", {
+        namespace: args.namespace,
+        ...fields,
+      });
+    }
+    await ctx.scheduler.runAfter(0, internal.namespaces.purgeLocal, {
+      namespace: args.namespace,
+    });
+    return null;
+  },
+});
+
+export const deletionStatus = query({
+  args: { namespace: v.string() },
+  returns: v.union(
+    v.null(),
+    v.object({
+      status: vDeletionStatus,
+      attempts: v.number(),
+      error: v.optional(v.string()),
+      requestedAt: v.number(),
+      completedAt: v.optional(v.number()),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("namespaceDeletions")
+      .withIndex("by_namespace", (q) => q.eq("namespace", args.namespace))
+      .unique();
+    if (!row) return null;
+    return {
+      status: row.status,
+      attempts: row.attempts,
+      error: row.error,
+      requestedAt: row.requestedAt,
+      completedAt: row.completedAt,
+    };
+  },
+});
+
+export const listFailedDeletions = query({
+  args: { limit: v.optional(v.number()) },
+  returns: v.array(
+    v.object({
+      namespace: v.string(),
+      attempts: v.number(),
+      error: v.optional(v.string()),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const limit = Math.min(Math.max(Math.floor(args.limit ?? 50), 1), 200);
+    const rows = await ctx.db
+      .query("namespaceDeletions")
+      .withIndex("by_status", (q) => q.eq("status", "failed"))
+      .take(limit);
+    return rows.map((r) => ({
+      namespace: r.namespace,
+      attempts: r.attempts,
+      error: r.error,
+    }));
+  },
+});
+
+export const retryFailedDeletions = mutation({
+  args: { limit: v.optional(v.number()) },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    const limit = Math.min(Math.max(Math.floor(args.limit ?? 25), 1), 100);
+    // Read past rows that hit the round cap so they can't starve the rest.
+    const rows = await ctx.db
+      .query("namespaceDeletions")
+      .withIndex("by_status", (q) => q.eq("status", "failed"))
+      .take(200);
+    let scheduled = 0;
+    for (const row of rows) {
+      if (scheduled >= limit) break;
+      const rounds = (row.rounds ?? 0) + 1;
+      // Past the cap, leave it failed for a person to look at.
+      if (rounds > MAX_RETRY_ROUNDS) continue;
+      await ctx.db.patch("namespaceDeletions", row._id, {
+        status: "pending",
+        attempts: 0,
+        rounds,
+      });
+      await ctx.scheduler.runAfter(0, internal.namespaces.purgeLocal, {
+        namespace: row.namespace,
+      });
+      scheduled++;
+    }
+    return scheduled;
+  },
+});
+
+export const purgeLocal = internalMutation({
+  args: { namespace: v.string() },
+  handler: async (ctx, args) => {
+    const docs = await ctx.db
+      .query("documents")
+      .withIndex("by_namespace", (q) => q.eq("namespace", args.namespace))
+      .take(PURGE_BATCH);
+    for (const doc of docs) await ctx.db.delete("documents", doc._id);
+
+    // The namespace delete covers these documents too.
+    const deletes = await ctx.db
+      .query("remoteDeletes")
+      .withIndex("by_namespace", (q) => q.eq("namespace", args.namespace))
+      .take(PURGE_BATCH);
+    for (const row of deletes) await ctx.db.delete("remoteDeletes", row._id);
+
+    if (docs.length === PURGE_BATCH || deletes.length === PURGE_BATCH) {
+      await ctx.scheduler.runAfter(0, internal.namespaces.purgeLocal, args);
+      return;
+    }
+    await ctx.scheduler.runAfter(0, internal.namespaces.deleteRemote, args);
+  },
+});
+
+export const deleteRemote = internalAction({
+  args: { namespace: v.string() },
+  handler: async (ctx, args) => {
+    try {
+      // "queued" means Supermemory accepted it and finishes on its side.
+      await createClient().namespaces.delete(args.namespace);
+      await ctx.runMutation(internal.namespaces.finishDeletion, args);
+    } catch (error) {
+      if (statusCodeOf(error) === 404) {
+        await ctx.runMutation(internal.namespaces.finishDeletion, args);
+        return;
+      }
+      await ctx.runMutation(internal.namespaces.recordDeletionFailure, {
+        namespace: args.namespace,
+        error: describeError(error),
+        retryable: isRetryable(error),
+      });
+    }
+  },
+});
+
+export const finishDeletion = internalMutation({
+  args: { namespace: v.string() },
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("namespaceDeletions")
+      .withIndex("by_namespace", (q) => q.eq("namespace", args.namespace))
+      .unique();
+    if (!row || row.status !== "pending") return;
+    await ctx.db.patch("namespaceDeletions", row._id, {
+      status: "deleted",
+      error: undefined,
+      completedAt: Date.now(),
+    });
+    // An ingest that was in flight can land after the delete. Sweep once more.
+    await ctx.scheduler.runAfter(SWEEP_DELAY_MS, internal.namespaces.sweep, {
+      namespace: args.namespace,
+    });
+  },
+});
+
+// Best effort, one call, no retries. Skipped if new data was added since,
+// because then the namespace is in use again.
+export const sweep = internalAction({
+  args: { namespace: v.string() },
+  handler: async (ctx, args) => {
+    const inUse = await ctx.runQuery(internal.namespaces.hasDocuments, args);
+    if (inUse) return;
+    try {
+      await createClient().namespaces.delete(args.namespace);
+    } catch {
+      // 404 is the expected outcome; anything else is left for next time.
+    }
+  },
+});
+
+export const hasDocuments = internalQuery({
+  args: { namespace: v.string() },
+  handler: async (ctx, args) => {
+    const doc = await ctx.db
+      .query("documents")
+      .withIndex("by_namespace", (q) => q.eq("namespace", args.namespace))
+      .first();
+    return doc !== null;
+  },
+});
+
+export const recordDeletionFailure = internalMutation({
+  args: { namespace: v.string(), error: v.string(), retryable: v.boolean() },
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("namespaceDeletions")
+      .withIndex("by_namespace", (q) => q.eq("namespace", args.namespace))
+      .unique();
+    if (!row || row.status !== "pending") return;
+    const attempts = args.retryable ? row.attempts + 1 : MAX_DELETE_ATTEMPTS;
+    if (attempts >= MAX_DELETE_ATTEMPTS) {
+      await ctx.db.patch("namespaceDeletions", row._id, {
+        status: "failed",
+        attempts,
+        error: args.error,
+      });
+      return;
+    }
+    await ctx.db.patch("namespaceDeletions", row._id, {
+      attempts,
+      error: args.error,
+    });
+    await ctx.scheduler.runAfter(
+      backoffMs(attempts, 5_000, 10 * 60_000),
+      internal.namespaces.deleteRemote,
+      { namespace: args.namespace },
+    );
+  },
+});
