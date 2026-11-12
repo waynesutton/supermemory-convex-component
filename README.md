@@ -2,6 +2,8 @@
 
 [![npm version](https://img.shields.io/npm/v/@waynesutton/convex-supermemory)](https://www.npmjs.com/package/@waynesutton/convex-supermemory)
 
+[![Convex Component](https://www.convex.dev/components/badge/waynesutton/convex-supermemory)](https://www.convex.dev/components/waynesutton/convex-supermemory)
+
 <!-- START: Include on https://convex.dev/components -->
 
 Give your Convex app long-term memory with
