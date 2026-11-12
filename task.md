@@ -14,5 +14,6 @@
 - [x] Live smoke test: note Ready in 43s, search hit, delete and reset confirmed remotely
 - [x] Create github.com/waynesutton/supermemory-convex-component and push
 - [ ] Publish `@waynesutton/convex-supermemory` to npm
-- [ ] Host the demo with production Turnstile keys
+- [x] Host the demo: https://whimsical-buzzard-500.convex.site
+- [ ] Set production Turnstile keys
 - [ ] Screenshots, then submit to the components directory

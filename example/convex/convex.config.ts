@@ -2,6 +2,7 @@ import { defineApp } from "convex/server";
 import { v } from "convex/values";
 import supermemory from "@waynesutton/convex-supermemory/convex.config.js";
 import rateLimiter from "@convex-dev/rate-limiter/convex.config.js";
+import staticHosting from "@convex-dev/static-hosting/convex.config.js";
 
 const app = defineApp({
   env: {
@@ -15,5 +16,8 @@ app.use(supermemory, {
   env: { SUPERMEMORY_API_KEY: app.env.SUPERMEMORY_API_KEY },
 });
 app.use(rateLimiter);
+// Serves the built frontend. No httpPrefix: http.ts mounts it after the auth
+// routes so those keep their root URLs.
+app.use(staticHosting);
 
 export default app;

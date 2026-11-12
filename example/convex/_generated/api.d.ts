@@ -57,4 +57,5 @@ export declare const internal: FilterApi<
 export declare const components: {
   supermemory: import("@waynesutton/convex-supermemory/_generated/component.js").ComponentApi<"supermemory">;
   rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
+  staticHosting: import("@convex-dev/static-hosting/_generated/component.js").ComponentApi<"staticHosting">;
 };

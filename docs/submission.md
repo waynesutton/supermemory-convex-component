@@ -35,7 +35,8 @@ record until Supermemory confirms them.
 - [x] Live smoke test against Supermemory (add, process, search, delete, hourly reset)
 - [x] Repo created on Wayne's GitHub and pushed
 - [ ] Published to npm
-- [ ] Demo hosted with production Turnstile keys
+- [x] Demo hosted at https://whimsical-buzzard-500.convex.site
+- [ ] Production Turnstile keys set
 - [ ] Screenshots from the hosted demo
 - [ ] Submitted at https://www.convex.dev/components
 

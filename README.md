@@ -49,7 +49,7 @@ What you get over calling the SDK yourself:
 A community component by [Wayne Sutton](https://github.com/waynesutton). Not an
 official Convex or Supermemory package.
 
-**Live demo:** the [Supermemory Convex component demo app](./example) runs
+**Live demo:** [whimsical-buzzard-500.convex.site](https://whimsical-buzzard-500.convex.site). The [Supermemory Convex component demo app](./example) runs
 anonymous sessions with Turnstile, per-visitor quotas, a daily budget and an
 hourly reset. Its code is a worked example of putting this component in front of
 the public.

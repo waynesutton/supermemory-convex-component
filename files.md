@@ -29,6 +29,7 @@
 | `convex/auth.ts`, `turnstile.ts` | Anonymous sign-in gated by a server-side Turnstile check |
 | `convex/demo.ts` | Limits, namespace derivation, notes, search, profile, reset and cleanup |
 | `convex/crons.ts` | Hourly reset |
+| `convex/http.ts` | Convex Auth routes, then the static hosting catch-all |
 | `convex/demo.test.ts` | Demo tests |
 | `src/App.tsx`, `src/index.css` | The UI |
 

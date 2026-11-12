@@ -73,12 +73,24 @@ information."
 From the Convex dashboard, run `demo:cleanupReport` for namespaces awaiting
 confirmation and any deletes that failed.
 
+## Hosting
+
+Live at https://whimsical-buzzard-500.convex.site, on the `supermemory-convex-component` project in Wayne's personal Convex team.
+
+The frontend is served by [`@convex-dev/static-hosting`](https://www.npmjs.com/package/@convex-dev/static-hosting) from the same deployment. `example/convex/http.ts` registers the Convex Auth routes first and the static catch-all after, so auth URLs stay at the root.
+
+```sh
+npm run deploy:demo   # convex deploy, then build example/ and upload example/dist
+```
+
+The package's own build also writes to `dist/`, so the demo always builds to `example/dist`.
+
 ## Production checklist
 
 - [ ] Real Turnstile site key in `VITE_TURNSTILE_SITE_KEY` and secret in
       `TURNSTILE_SECRET_KEY`
 - [ ] `TURNSTILE_EXPECTED_HOSTNAME` set to the production hostname
-- [ ] `SITE_URL` set to the production URL
+- [x] `SITE_URL` set to the production URL
 - [ ] Fresh `JWT_PRIVATE_KEY` and `JWKS` from
       `node scripts/generate-auth-keys.mjs`
 - [ ] A Supermemory key used only for this demo, so cleanup and spend are
