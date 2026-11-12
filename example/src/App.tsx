@@ -570,7 +570,11 @@ function HowItWorks() {
         <li>
           <strong>Reset.</strong> A Convex cron runs at the top of every hour.
           It moves everyone to fresh namespaces and deletes the old ones from
-          both systems, retrying until Supermemory confirms.
+          both systems, retrying until Supermemory confirms.{" "}
+          <em>
+            The hourly reset is only for this demo app. It isn&rsquo;t part of
+            the component; your app decides when data is deleted.
+          </em>
         </li>
       </ol>
       <pre className="code">
@@ -587,8 +591,11 @@ function Footer() {
   return (
     <footer className="footer">
       <p>
-        Supermemory Convex component demo app. A community project by Wayne
-        Sutton, not an official Convex or Supermemory product.{" "}
+        Supermemory Convex component demo app. A community project by{" "}
+        <a href="https://waynesutton.ai/" target="_blank" rel="noreferrer">
+          Wayne Sutton
+        </a>
+        , not an official Convex or Supermemory product.{" "}
         <a href={REPO_URL} target="_blank" rel="noreferrer">
           MIT licensed on GitHub
         </a>
