@@ -36,7 +36,7 @@ record until Supermemory confirms them.
 - [x] Repo created on Wayne's GitHub and pushed
 - [ ] Published to npm
 - [x] Demo hosted at https://whimsical-buzzard-500.convex.site
-- [ ] Production Turnstile keys set
+- [x] Production Turnstile keys set (widget "Supermemory Convex component demo")
 - [ ] Screenshots from the hosted demo
 - [ ] Submitted at https://www.convex.dev/components
 

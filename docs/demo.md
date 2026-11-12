@@ -83,13 +83,15 @@ The frontend is served by [`@convex-dev/static-hosting`](https://www.npmjs.com/p
 npm run deploy:demo   # convex deploy, then build example/ and upload example/dist
 ```
 
+The Turnstile site key is public and lives in `.env.production`. The secret is only on the deployment.
+
 The package's own build also writes to `dist/`, so the demo always builds to `example/dist`.
 
 ## Production checklist
 
 - [ ] Real Turnstile site key in `VITE_TURNSTILE_SITE_KEY` and secret in
       `TURNSTILE_SECRET_KEY`
-- [ ] `TURNSTILE_EXPECTED_HOSTNAME` set to the production hostname
+- [x] `TURNSTILE_EXPECTED_HOSTNAME` set to the production hostname
 - [x] `SITE_URL` set to the production URL
 - [ ] Fresh `JWT_PRIVATE_KEY` and `JWKS` from
       `node scripts/generate-auth-keys.mjs`

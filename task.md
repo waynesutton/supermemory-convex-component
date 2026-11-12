@@ -15,5 +15,5 @@
 - [x] Create github.com/waynesutton/supermemory-convex-component and push
 - [ ] Publish `@waynesutton/convex-supermemory` to npm
 - [x] Host the demo: https://whimsical-buzzard-500.convex.site
-- [ ] Set production Turnstile keys
+- [x] Set production Turnstile keys
 - [ ] Screenshots, then submit to the components directory
