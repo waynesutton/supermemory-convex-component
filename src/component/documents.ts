@@ -55,7 +55,6 @@ function toPublic(doc: Doc<"documents">): PublicDocument {
   };
 }
 
-// An attempt older than the SDK timeout plus margin is treated as crashed, so a newer revision isn't blocked forever.
 function isIngesting(doc: Doc<"documents">) {
   return (
     doc.ingestStartedAt !== undefined &&
@@ -391,7 +390,7 @@ export const beginIngest = internalMutation({
   },
 });
 
-// Content is always the full document, so a retry after a lost response re-sends a snapshot Supermemory treats as unchanged.
+// Supermemory ignores a repeated snapshot, so a retry re-sends instead of looking up first.
 export const ingest = internalAction({
   args: { documentId: v.id("documents") },
   handler: async (ctx, args) => {
@@ -531,7 +530,6 @@ export const recordIngestFailure = internalMutation({
   },
 });
 
-// Once content is done, memories form on Supermemory's batching schedule, so polling slows down to match.
 async function scheduleNextCheck(
   ctx: MutationCtx,
   doc: Doc<"documents">,

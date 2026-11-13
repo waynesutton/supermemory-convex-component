@@ -147,7 +147,7 @@ export class Supermemory {
     return await ctx.runAction(this.component.memory.profile, args);
   }
 
-  /** Profile plus memories relevant to `query` as one system message for an Agent `contextHandler`, or null when nothing is known. */
+  /** One system message for an Agent `contextHandler`, or null. */
   async memoryContext(
     ctx: ActionCtx,
     args: {
@@ -184,7 +184,7 @@ export class Supermemory {
     return { role: "system" as const, content: sections.join("\n\n") };
   }
 
-  /** Save a whole conversation as one document per thread; Supermemory only processes what changed since the last save. */
+  /** One Supermemory document per thread. */
   async saveThread(
     ctx: MutationCtx,
     args: {
@@ -208,7 +208,7 @@ export class Supermemory {
     });
   }
 
-  /** Remove this component's documents in a namespace, here and in Supermemory. `remote: "namespace"` wipes the whole remote namespace instead. */
+  /** Removes this component's documents; `remote: "namespace"` wipes the whole namespace. */
   async deleteNamespace(
     ctx: MutationCtx,
     args: { namespace: string; remote?: "documents" | "namespace" },

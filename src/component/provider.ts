@@ -85,7 +85,6 @@ export function backoffMs(attempt: number, baseMs = 2_000, maxMs = 60_000) {
   return Math.min(maxMs, baseMs * 2 ** attempt);
 }
 
-// A document is settled once it failed, or its content and its memories are both done.
 export function isSettled(doc: { status: string; memoryStatus?: string }) {
   if (doc.status === "failed") return true;
   return doc.status === "done" && (doc.memoryStatus ?? "done") === "done";

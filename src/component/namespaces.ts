@@ -34,11 +34,7 @@ const vDeletionStatus = v.union(
   v.literal("failed"),
 );
 
-/**
- * Deletes every document this component added to a namespace, here and in
- * Supermemory. Pass `remote: "namespace"` to wipe the whole remote namespace,
- * including data written outside this component.
- */
+/** Deletes this component's documents in a namespace; `remote: "namespace"` wipes the whole remote namespace. */
 export const deleteNamespace = mutation({
   args: { namespace: v.string(), remote: v.optional(vRemoteScope) },
   returns: v.null(),
@@ -209,7 +205,6 @@ export const purgeLocal = internalMutation({
   },
 });
 
-// Per-document deletes retry on their own; the namespace is done once none are left, or failed once all that are left are stuck.
 export const checkDrained = internalMutation({
   args: { namespace: v.string() },
   handler: async (ctx, args) => {
