@@ -23,6 +23,7 @@ export {
   NAMESPACE_PATTERN,
   DEFAULT_MAX_STATUS_CHECKS,
 } from "../component/limits.js";
+import { MAX_QUERY_LENGTH } from "../component/limits.js";
 
 type QueryCtx = Pick<GenericQueryCtx<GenericDataModel>, "runQuery">;
 type MutationCtx = Pick<
@@ -35,6 +36,8 @@ type ActionCtx = Pick<
 >;
 
 export type MetadataValue = string | number | boolean | string[];
+export type Filter = Record<string, unknown>;
+export type ThreadMessage = { role: string; content: string };
 
 export type SupermemoryOptions = {
   /** Status checks per document before polling stops. Defaults to 8. */
@@ -63,6 +66,9 @@ export class Supermemory {
       title?: string;
       metadata?: Record<string, MetadataValue>;
       maxStatusChecks?: number;
+      id?: string;
+      dreaming?: "dynamic" | "instant";
+      taskType?: "memory" | "superrag";
     },
   ) {
     return await ctx.runMutation(this.component.documents.add, {
@@ -128,6 +134,7 @@ export class Supermemory {
       threshold?: number;
       rerank?: "none" | "order" | "aggregate";
       rewriteQuery?: boolean;
+      filter?: Filter;
     },
   ) {
     return await ctx.runAction(this.component.memory.search, args);
@@ -135,13 +142,77 @@ export class Supermemory {
 
   async profile(
     ctx: ActionCtx,
-    args: { namespace: string; buckets?: string[] },
+    args: { namespace: string; buckets?: string[]; filter?: Filter },
   ) {
     return await ctx.runAction(this.component.memory.profile, args);
   }
 
-  /** Remove everything in a namespace, locally and remotely, in the background. */
-  async deleteNamespace(ctx: MutationCtx, args: { namespace: string }) {
+  /** Profile plus memories relevant to `query` as one system message for an Agent `contextHandler`, or null when nothing is known. */
+  async memoryContext(
+    ctx: ActionCtx,
+    args: {
+      namespace: string;
+      query?: string;
+      limit?: number;
+      filter?: Filter;
+    },
+  ) {
+    const query = args.query?.trim().slice(0, MAX_QUERY_LENGTH);
+    const [profile, search] = await Promise.all([
+      this.profile(ctx, { namespace: args.namespace, filter: args.filter }),
+      query
+        ? this.search(ctx, {
+            namespace: args.namespace,
+            query,
+            limit: args.limit ?? 5,
+            searchMode: "memories",
+            filter: args.filter,
+          })
+        : null,
+    ]);
+    const facts = [...profile.static, ...profile.dynamic].map((i) => i.memory);
+    const relevant = (search?.results ?? [])
+      .map((r) => r.memory ?? r.chunk ?? "")
+      .filter((m) => m && !facts.includes(m));
+    if (facts.length === 0 && relevant.length === 0) return null;
+    const sections = [
+      facts.length > 0 &&
+        `What you know about the user:\n${facts.map((f) => `- ${f}`).join("\n")}`,
+      relevant.length > 0 &&
+        `Relevant memories:\n${relevant.map((m) => `- ${m}`).join("\n")}`,
+    ].filter(Boolean);
+    return { role: "system" as const, content: sections.join("\n\n") };
+  }
+
+  /** Save a whole conversation as one document per thread; Supermemory only processes what changed since the last save. */
+  async saveThread(
+    ctx: MutationCtx,
+    args: {
+      namespace: string;
+      threadId: string;
+      messages: ThreadMessage[];
+      metadata?: Record<string, MetadataValue>;
+      dreaming?: "dynamic" | "instant";
+    },
+  ) {
+    const content = args.messages
+      .filter((m) => m.content.trim().length > 0)
+      .map((m) => `${m.role}: ${m.content.trim()}`)
+      .join("\n\n");
+    return await this.add(ctx, {
+      namespace: args.namespace,
+      id: `thread_${args.threadId}`,
+      content,
+      metadata: args.metadata,
+      dreaming: args.dreaming,
+    });
+  }
+
+  /** Remove this component's documents in a namespace, here and in Supermemory. `remote: "namespace"` wipes the whole remote namespace instead. */
+  async deleteNamespace(
+    ctx: MutationCtx,
+    args: { namespace: string; remote?: "documents" | "namespace" },
+  ) {
     return await ctx.runMutation(
       this.component.namespaces.deleteNamespace,
       args,

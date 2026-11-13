@@ -309,6 +309,7 @@ export const addNote = mutation({
       content,
       requestId: args.requestId,
       metadata: { source: "demo" },
+      dreaming: "instant",
     });
     return documentId;
   },
@@ -341,7 +342,10 @@ export const clearMyData = mutation({
       .withIndex("by_namespace", (q) => q.eq("namespace", namespace))
       .unique();
     if (row) {
-      await supermemory.deleteNamespace(ctx, { namespace });
+      await supermemory.deleteNamespace(ctx, {
+        namespace,
+        remote: "namespace",
+      });
       await ctx.db.patch("demoNamespaces", row._id, { cleanup: "requested" });
     }
     // Move to a fresh namespace. Quotas stay as they are.
@@ -451,7 +455,10 @@ export const cleanupBatch = internalMutation({
       )
       .take(CLEANUP_BATCH);
     for (const row of rows) {
-      await supermemory.deleteNamespace(ctx, { namespace: row.namespace });
+      await supermemory.deleteNamespace(ctx, {
+        namespace: row.namespace,
+        remote: "namespace",
+      });
       await ctx.db.patch("demoNamespaces", row._id, { cleanup: "requested" });
     }
     // Spread big resets out so Supermemory sees a steady trickle.
