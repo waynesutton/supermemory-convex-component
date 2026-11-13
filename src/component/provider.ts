@@ -14,6 +14,8 @@ import {
   DEFAULT_MAX_STATUS_CHECKS,
   MAX_RETRY_ROUNDS,
   MAX_LIST_LIMIT,
+  MEMORY_POLL_MS,
+  MAX_DOCUMENT_ID_LENGTH,
 } from "./limits.js";
 
 export {
@@ -25,6 +27,8 @@ export {
   DEFAULT_MAX_STATUS_CHECKS,
   MAX_RETRY_ROUNDS,
   MAX_LIST_LIMIT,
+  MEMORY_POLL_MS,
+  MAX_DOCUMENT_ID_LENGTH,
 };
 
 export function assertNamespace(namespace: string) {
@@ -81,4 +85,7 @@ export function backoffMs(attempt: number, baseMs = 2_000, maxMs = 60_000) {
   return Math.min(maxMs, baseMs * 2 ** attempt);
 }
 
-export const TERMINAL_STATUSES = new Set(["done", "failed"]);
+export function isSettled(doc: { status: string; memoryStatus?: string }) {
+  if (doc.status === "failed") return true;
+  return doc.status === "done" && (doc.memoryStatus ?? "done") === "done";
+}

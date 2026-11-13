@@ -9,23 +9,34 @@ import {
   type MutationCtx,
 } from "./_generated/server.js";
 import { internal } from "./_generated/api.js";
-import type { Doc, Id } from "./_generated/dataModel.js";
-import { metadataValue, vDocument, type PublicDocument } from "./validators.js";
+import type { Doc } from "./_generated/dataModel.js";
+import {
+  dreamingMode,
+  memoryStatus,
+  metadataValue,
+  taskType,
+  vDocument,
+  type PublicDocument,
+} from "./validators.js";
 import {
   DEFAULT_MAX_STATUS_CHECKS,
   MAX_CONTENT_LENGTH,
   MAX_DELETE_ATTEMPTS,
   MAX_INGEST_ATTEMPTS,
   MAX_LIST_LIMIT,
+  MAX_DOCUMENT_ID_LENGTH,
   MAX_RETRY_ROUNDS,
-  TERMINAL_STATUSES,
+  MEMORY_POLL_MS,
   assertNamespace,
   backoffMs,
   createClient,
   describeError,
   isRetryable,
+  isSettled,
   statusCodeOf,
 } from "./provider.js";
+
+const INGEST_STALE_MS = 2 * 60_000;
 
 function toPublic(doc: Doc<"documents">): PublicDocument {
   return {
@@ -37,10 +48,18 @@ function toPublic(doc: Doc<"documents">): PublicDocument {
     summary: doc.summary,
     metadata: doc.metadata,
     status: doc.status,
+    memoryStatus: doc.memoryStatus,
     error: doc.error,
     createdAt: doc._creationTime,
     updatedAt: doc.updatedAt,
   };
+}
+
+function isIngesting(doc: Doc<"documents">) {
+  return (
+    doc.ingestStartedAt !== undefined &&
+    Date.now() - doc.ingestStartedAt < INGEST_STALE_MS
+  );
 }
 
 async function namespaceIsDeleting(ctx: MutationCtx, namespace: string) {
@@ -59,6 +78,9 @@ export const add = mutation({
     title: v.optional(v.string()),
     metadata: v.optional(v.record(v.string(), metadataValue)),
     maxStatusChecks: v.optional(v.number()),
+    id: v.optional(v.string()),
+    dreaming: v.optional(dreamingMode),
+    taskType: v.optional(taskType),
   },
   returns: v.object({ documentId: v.string(), deduplicated: v.boolean() }),
   handler: async (ctx, args) => {
@@ -77,6 +99,16 @@ export const add = mutation({
     if (maxStatusChecks < 0 || maxStatusChecks > 30) {
       throw new Error("maxStatusChecks must be between 0 and 30.");
     }
+    if (
+      args.id !== undefined &&
+      (args.id.length === 0 ||
+        args.id.length > MAX_DOCUMENT_ID_LENGTH ||
+        args.id.startsWith("cvx_"))
+    ) {
+      throw new Error(
+        `id must be 1 to ${MAX_DOCUMENT_ID_LENGTH} characters and not start with "cvx_".`,
+      );
+    }
 
     if (args.requestId !== undefined) {
       const existing = await ctx.db
@@ -94,22 +126,63 @@ export const add = mutation({
       throw new Error("This namespace is being deleted. Try again shortly.");
     }
 
-    const documentId = await ctx.db.insert("documents", {
-      namespace: args.namespace,
+    const fields = {
       requestId: args.requestId,
       content,
       title: args.title,
       metadata: args.metadata,
-      remoteId: "",
-      status: "pending",
+      dreaming: args.dreaming,
+      taskType: args.taskType,
+      status: "pending" as const,
+      memoryStatus: "pending" as const,
       ingestAttempts: 0,
       statusChecks: 0,
       maxStatusChecks,
       updatedAt: Date.now(),
+    };
+
+    if (args.id !== undefined) {
+      const id = args.id;
+      const deleting = await ctx.db
+        .query("remoteDeletes")
+        .withIndex("by_remote_id", (q) => q.eq("remoteId", id))
+        .first();
+      if (deleting?.namespace === args.namespace) {
+        throw new Error("This id is being deleted. Try again shortly.");
+      }
+      const existing = await ctx.db
+        .query("documents")
+        .withIndex("by_namespace_and_remote_id", (q) =>
+          q.eq("namespace", args.namespace).eq("remoteId", id),
+        )
+        .unique();
+      if (existing) {
+        await ctx.db.patch("documents", existing._id, {
+          ...fields,
+          error: undefined,
+          title: args.title ?? existing.title,
+          revision: (existing.revision ?? 0) + 1,
+        });
+        if (!isIngesting(existing)) {
+          await ctx.scheduler.runAfter(0, internal.documents.ingest, {
+            documentId: existing._id,
+          });
+        }
+        return { documentId: existing._id, deduplicated: false };
+      }
+    }
+
+    const documentId = await ctx.db.insert("documents", {
+      namespace: args.namespace,
+      ...fields,
+      remoteId: args.id ?? "",
+      revision: 0,
     });
-    await ctx.db.patch("documents", documentId, {
-      remoteId: `cvx_${documentId}`,
-    });
+    if (args.id === undefined) {
+      await ctx.db.patch("documents", documentId, {
+        remoteId: `cvx_${documentId}`,
+      });
+    }
     await ctx.scheduler.runAfter(0, internal.documents.ingest, { documentId });
     return { documentId, deduplicated: false };
   },
@@ -185,15 +258,14 @@ export const refreshStatus = mutation({
     if (!id) return false;
     const doc = await ctx.db.get("documents", id);
     if (!doc || doc.namespace !== args.namespace) return false;
-    if (doc.status === "pending" || TERMINAL_STATUSES.has(doc.status)) {
-      return false;
-    }
+    if (doc.status === "pending" || isSettled(doc)) return false;
     // Allow exactly one more check than the budget already spent.
     await ctx.db.patch("documents", id, {
       maxStatusChecks: Math.max(doc.maxStatusChecks, doc.statusChecks + 1),
     });
     await ctx.scheduler.runAfter(0, internal.documents.checkStatus, {
       documentId: id,
+      revision: doc.revision ?? 0,
     });
     return true;
   },
@@ -300,9 +372,10 @@ export const beginIngest = internalMutation({
   args: { documentId: v.id("documents") },
   handler: async (ctx, args) => {
     const doc = await ctx.db.get("documents", args.documentId);
-    if (!doc || doc.status !== "pending") return null;
+    if (!doc || doc.status !== "pending" || isIngesting(doc)) return null;
     await ctx.db.patch("documents", doc._id, {
       ingestAttempts: doc.ingestAttempts + 1,
+      ingestStartedAt: Date.now(),
       updatedAt: Date.now(),
     });
     return {
@@ -310,51 +383,40 @@ export const beginIngest = internalMutation({
       remoteId: doc.remoteId,
       content: doc.content,
       metadata: doc.metadata,
-      previousAttempts: doc.ingestAttempts,
+      dreaming: doc.dreaming,
+      taskType: doc.taskType,
+      revision: doc.revision ?? 0,
     };
   },
 });
 
+// Supermemory ignores a repeated snapshot, so a retry re-sends instead of looking up first.
 export const ingest = internalAction({
   args: { documentId: v.id("documents") },
   handler: async (ctx, args) => {
     const job = await ctx.runMutation(internal.documents.beginIngest, args);
     if (!job) return;
     try {
-      const client = createClient();
-      let status: string | undefined;
-      if (job.previousAttempts > 0) {
-        // The last attempt may have reached Supermemory before failing. Adding
-        // to an existing id appends, so look first.
-        try {
-          const existing = await client.documents.get(
-            job.namespace,
-            job.remoteId,
-          );
-          status = existing.system.status;
-        } catch (error) {
-          if (statusCodeOf(error) !== 404) throw error;
-        }
-      }
-      if (status === undefined) {
-        const response = await client.add(job.namespace, {
-          content: job.content,
-          id: job.remoteId,
-          metadata: job.metadata,
-        });
-        status = response.status;
-      }
+      const response = await createClient().add(job.namespace, {
+        content: job.content,
+        id: job.remoteId,
+        metadata: job.metadata,
+        dreaming: job.dreaming,
+        taskType: job.taskType,
+      });
       await ctx.runMutation(internal.documents.markSubmitted, {
         documentId: args.documentId,
         namespace: job.namespace,
         remoteId: job.remoteId,
-        status: normalizeStatus(status),
+        revision: job.revision,
+        status: normalizeStatus(response.status),
       });
     } catch (error) {
       await ctx.runMutation(internal.documents.recordIngestFailure, {
         documentId: args.documentId,
         namespace: job.namespace,
         remoteId: job.remoteId,
+        revision: job.revision,
         error: describeError(error),
         retryable: isRetryable(error),
       });
@@ -392,6 +454,7 @@ export const markSubmitted = internalMutation({
     documentId: v.id("documents"),
     namespace: v.string(),
     remoteId: v.string(),
+    revision: v.number(),
     status: remoteStatus,
   },
   handler: async (ctx, args) => {
@@ -402,12 +465,21 @@ export const markSubmitted = internalMutation({
       await queueRemoteDelete(ctx, args.namespace, args.remoteId);
       return;
     }
+    if ((doc.revision ?? 0) !== args.revision) {
+      await ctx.db.patch("documents", doc._id, { ingestStartedAt: undefined });
+      await ctx.scheduler.runAfter(0, internal.documents.ingest, {
+        documentId: doc._id,
+      });
+      return;
+    }
+    const next = { ...doc, status: args.status };
     await ctx.db.patch("documents", doc._id, {
       status: args.status,
+      ingestStartedAt: undefined,
       error: undefined,
       updatedAt: Date.now(),
     });
-    await scheduleNextCheck(ctx, doc._id, args.status, 0, doc.maxStatusChecks);
+    await scheduleNextCheck(ctx, next, 0);
   },
 });
 
@@ -416,6 +488,7 @@ export const recordIngestFailure = internalMutation({
     documentId: v.id("documents"),
     namespace: v.string(),
     remoteId: v.string(),
+    revision: v.number(),
     error: v.string(),
     retryable: v.boolean(),
   },
@@ -427,6 +500,13 @@ export const recordIngestFailure = internalMutation({
       if (args.retryable) {
         await queueRemoteDelete(ctx, args.namespace, args.remoteId);
       }
+      return;
+    }
+    await ctx.db.patch("documents", doc._id, { ingestStartedAt: undefined });
+    if ((doc.revision ?? 0) !== args.revision) {
+      await ctx.scheduler.runAfter(0, internal.documents.ingest, {
+        documentId: doc._id,
+      });
       return;
     }
     if (doc.status !== "pending") return;
@@ -452,26 +532,28 @@ export const recordIngestFailure = internalMutation({
 
 async function scheduleNextCheck(
   ctx: MutationCtx,
-  documentId: Id<"documents">,
-  status: string,
+  doc: Doc<"documents">,
   checksSoFar: number,
-  maxChecks: number,
 ) {
-  if (TERMINAL_STATUSES.has(status) || checksSoFar >= maxChecks) return;
-  await ctx.scheduler.runAfter(
-    backoffMs(checksSoFar),
-    internal.documents.checkStatus,
-    { documentId },
-  );
+  if (isSettled(doc) || checksSoFar >= doc.maxStatusChecks) return;
+  const delay =
+    doc.status === "done"
+      ? Math.max(backoffMs(checksSoFar), MEMORY_POLL_MS)
+      : backoffMs(checksSoFar);
+  await ctx.scheduler.runAfter(delay, internal.documents.checkStatus, {
+    documentId: doc._id,
+    revision: doc.revision ?? 0,
+  });
 }
 
 export const checkStatus = internalAction({
-  args: { documentId: v.id("documents") },
+  args: { documentId: v.id("documents"), revision: v.number() },
   handler: async (ctx, args) => {
-    const doc = await ctx.runQuery(internal.documents.loadForIngest, args);
-    if (!doc || doc.status === "pending" || TERMINAL_STATUSES.has(doc.status)) {
-      return;
-    }
+    const doc = await ctx.runQuery(internal.documents.loadForIngest, {
+      documentId: args.documentId,
+    });
+    if (!doc || doc.status === "pending" || isSettled(doc)) return;
+    if ((doc.revision ?? 0) !== args.revision) return;
     if (doc.statusChecks >= doc.maxStatusChecks) return;
     try {
       const remote = await createClient().documents.get(
@@ -480,13 +562,17 @@ export const checkStatus = internalAction({
       );
       await ctx.runMutation(internal.documents.applyStatus, {
         documentId: args.documentId,
+        revision: args.revision,
         status: normalizeStatus(remote.system.status),
+        memoryStatus:
+          remote.system.dreamingStatus === "done" ? "done" : "dreaming",
         title: remote.title ?? undefined,
         summary: remote.summary ?? undefined,
       });
     } catch (error) {
       await ctx.runMutation(internal.documents.applyStatus, {
         documentId: args.documentId,
+        revision: args.revision,
         error: describeError(error),
       });
     }
@@ -496,33 +582,28 @@ export const checkStatus = internalAction({
 export const applyStatus = internalMutation({
   args: {
     documentId: v.id("documents"),
+    revision: v.number(),
     status: v.optional(remoteStatus),
+    memoryStatus: v.optional(memoryStatus),
     title: v.optional(v.string()),
     summary: v.optional(v.string()),
     error: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const doc = await ctx.db.get("documents", args.documentId);
-    if (!doc || doc.status === "pending" || TERMINAL_STATUSES.has(doc.status)) {
-      return;
-    }
-    const statusChecks = doc.statusChecks + 1;
-    const status = args.status ?? doc.status;
-    await ctx.db.patch("documents", doc._id, {
-      status,
-      statusChecks,
+    if (!doc || doc.status === "pending" || isSettled(doc)) return;
+    if ((doc.revision ?? 0) !== args.revision) return;
+    const patch = {
+      status: args.status ?? doc.status,
+      memoryStatus: args.memoryStatus ?? doc.memoryStatus,
+      statusChecks: doc.statusChecks + 1,
       title: doc.title ?? args.title,
       summary: args.summary ?? doc.summary,
       error: args.error,
       updatedAt: Date.now(),
-    });
-    await scheduleNextCheck(
-      ctx,
-      doc._id,
-      status,
-      statusChecks,
-      doc.maxStatusChecks,
-    );
+    };
+    await ctx.db.patch("documents", doc._id, patch);
+    await scheduleNextCheck(ctx, { ...doc, ...patch }, patch.statusChecks);
   },
 });
 

@@ -18,11 +18,15 @@ import {
   isRetryable,
   statusCodeOf,
 } from "./provider.js";
+import { queueRemoteDelete } from "./documents.js";
 
 // Documents can be 50k characters; 25 keeps a batch far from read limits.
 const PURGE_BATCH = 25;
 // One more delete after the first succeeds, for ingests that land late.
 const SWEEP_DELAY_MS = 10 * 60_000;
+const DRAIN_CHECK_MS = 30_000;
+
+const vRemoteScope = v.union(v.literal("documents"), v.literal("namespace"));
 
 const vDeletionStatus = v.union(
   v.literal("pending"),
@@ -30,12 +34,9 @@ const vDeletionStatus = v.union(
   v.literal("failed"),
 );
 
-/**
- * Deletes every document in a namespace, here and in Supermemory. Local rows
- * go in batches, then the remote namespace is deleted with retries.
- */
+/** Deletes this component's documents in a namespace; `remote: "namespace"` wipes the whole remote namespace. */
 export const deleteNamespace = mutation({
-  args: { namespace: v.string() },
+  args: { namespace: v.string(), remote: v.optional(vRemoteScope) },
   returns: v.null(),
   handler: async (ctx, args) => {
     assertNamespace(args.namespace);
@@ -46,6 +47,7 @@ export const deleteNamespace = mutation({
     if (existing?.status === "pending") return null;
     const fields = {
       status: "pending" as const,
+      remote: args.remote ?? ("documents" as const),
       attempts: 0,
       rounds: 0,
       error: undefined,
@@ -134,6 +136,19 @@ export const retryFailedDeletions = mutation({
       const rounds = (row.rounds ?? 0) + 1;
       // Past the cap, leave it failed for a person to look at.
       if (rounds > MAX_RETRY_ROUNDS) continue;
+      if (row.remote === "documents") {
+        const stuck = await ctx.db
+          .query("remoteDeletes")
+          .withIndex("by_namespace", (q) => q.eq("namespace", row.namespace))
+          .take(100);
+        for (const d of stuck) {
+          if (d.attempts < MAX_DELETE_ATTEMPTS) continue;
+          await ctx.db.patch("remoteDeletes", d._id, { attempts: 0 });
+          await ctx.scheduler.runAfter(0, internal.documents.deleteRemote, {
+            deleteId: d._id,
+          });
+        }
+      }
       await ctx.db.patch("namespaceDeletions", row._id, {
         status: "pending",
         attempts: 0,
@@ -151,24 +166,79 @@ export const retryFailedDeletions = mutation({
 export const purgeLocal = internalMutation({
   args: { namespace: v.string() },
   handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("namespaceDeletions")
+      .withIndex("by_namespace", (q) => q.eq("namespace", args.namespace))
+      .unique();
+    const wholeNamespace = row?.remote !== "documents";
     const docs = await ctx.db
       .query("documents")
       .withIndex("by_namespace", (q) => q.eq("namespace", args.namespace))
       .take(PURGE_BATCH);
-    for (const doc of docs) await ctx.db.delete("documents", doc._id);
+    for (const doc of docs) {
+      await ctx.db.delete("documents", doc._id);
+      if (!wholeNamespace) {
+        await queueRemoteDelete(ctx, doc.namespace, doc.remoteId);
+      }
+    }
 
     // The namespace delete covers these documents too.
-    const deletes = await ctx.db
-      .query("remoteDeletes")
-      .withIndex("by_namespace", (q) => q.eq("namespace", args.namespace))
-      .take(PURGE_BATCH);
-    for (const row of deletes) await ctx.db.delete("remoteDeletes", row._id);
+    const deletes = wholeNamespace
+      ? await ctx.db
+          .query("remoteDeletes")
+          .withIndex("by_namespace", (q) => q.eq("namespace", args.namespace))
+          .take(PURGE_BATCH)
+      : [];
+    for (const d of deletes) await ctx.db.delete("remoteDeletes", d._id);
 
     if (docs.length === PURGE_BATCH || deletes.length === PURGE_BATCH) {
       await ctx.scheduler.runAfter(0, internal.namespaces.purgeLocal, args);
       return;
     }
-    await ctx.scheduler.runAfter(0, internal.namespaces.deleteRemote, args);
+    await ctx.scheduler.runAfter(
+      0,
+      wholeNamespace
+        ? internal.namespaces.deleteRemote
+        : internal.namespaces.checkDrained,
+      args,
+    );
+  },
+});
+
+export const checkDrained = internalMutation({
+  args: { namespace: v.string() },
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("namespaceDeletions")
+      .withIndex("by_namespace", (q) => q.eq("namespace", args.namespace))
+      .unique();
+    if (!row || row.status !== "pending") return;
+    const owed = await ctx.db
+      .query("remoteDeletes")
+      .withIndex("by_namespace", (q) => q.eq("namespace", args.namespace))
+      .take(100);
+    if (owed.length === 0) {
+      await ctx.db.patch("namespaceDeletions", row._id, {
+        status: "deleted",
+        error: undefined,
+        completedAt: Date.now(),
+      });
+      return;
+    }
+    const stuck = owed.filter((d) => d.attempts >= MAX_DELETE_ATTEMPTS);
+    if (stuck.length === owed.length) {
+      await ctx.db.patch("namespaceDeletions", row._id, {
+        status: "failed",
+        attempts: stuck[0].attempts,
+        error: stuck[0].error,
+      });
+      return;
+    }
+    await ctx.scheduler.runAfter(
+      DRAIN_CHECK_MS,
+      internal.namespaces.checkDrained,
+      args,
+    );
   },
 });
 

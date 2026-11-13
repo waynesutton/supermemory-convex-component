@@ -17,7 +17,11 @@ export function installFakeSupermemory() {
   // Queue of forced responses, consumed in order: e.g. [503, 503].
   const failures: number[] = [];
   // Status the next `add` reports, and what later `get`s report.
-  const state = { addStatus: "queued", getStatus: "done" };
+  const state = {
+    addStatus: "queued",
+    getStatus: "done",
+    dreamingStatus: "done",
+  };
 
   const docsIn = (ns: string) => {
     let docs = namespaces.get(ns);
@@ -50,9 +54,13 @@ export function installFakeSupermemory() {
       if (method === "POST") {
         const docs = docsIn(ns);
         const prev = docs.get(body.id);
+        const content =
+          !prev || body.content.startsWith(prev.content)
+            ? body.content
+            : `${prev.content}\n${body.content}`;
         docs.set(body.id, {
           id: body.id,
-          content: prev ? `${prev.content}\n${body.content}` : body.content,
+          content,
           status: state.addStatus,
           metadata: body.metadata ?? {},
         });
@@ -81,7 +89,7 @@ export function installFakeSupermemory() {
         metadata: doc.metadata,
         system: {
           status: doc.status,
-          dreamingStatus: "done",
+          dreamingStatus: state.dreamingStatus,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },
