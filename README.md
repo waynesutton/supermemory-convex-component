@@ -7,10 +7,15 @@
 <!-- START: Include on https://convex.dev/components -->
 
 Give your Convex app long-term memory with
-[Supermemory](https://supermemory.ai). Add text or URLs from a mutation. The
+[Supermemory](https://supermemory.ai/). Add text or URLs from a mutation. The
 component sends them to Supermemory in the background, tracks processing status
 in its own tables, and lets you search memories or read a user profile from any
 action.
+
+New to Supermemory? The [Supermemory docs](https://supermemory.ai/docs) explain
+memories, namespaces and profiles, and the
+[quickstart](https://supermemory.ai/docs/quickstart) gets you the API key this
+component needs.
 
 ```ts
 const supermemory = new Supermemory(components.supermemory);
