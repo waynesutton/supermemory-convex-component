@@ -27,4 +27,4 @@
 ## To Do
 
 - [ ] Publish 0.2.0 (the PR #2 changes) to npm
-- [ ] Redeploy the hosted demo so it shows "Building memories"
+- [x] 2026-11-15 Redeployed the hosted demo with the 0.2.0 code
