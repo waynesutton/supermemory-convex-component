@@ -641,4 +641,52 @@ describe("caller ids, memory status and scoped deletes", () => {
     await drain(t);
     expect(fake.namespaces.has("user_a")).toBe(false);
   });
+
+  test("the same id in two namespaces deletes independently", async () => {
+    const { t, fake } = setup();
+    const a = await t.mutation(api.documents.add, {
+      namespace: "user_a",
+      id: "profile",
+      content: "A's profile",
+      maxStatusChecks: 0,
+    });
+    const b = await t.mutation(api.documents.add, {
+      namespace: "user_b",
+      id: "profile",
+      content: "B's profile",
+      maxStatusChecks: 0,
+    });
+    await drain(t);
+    expect(fake.namespaces.get("user_a")?.has("profile")).toBe(true);
+    expect(fake.namespaces.get("user_b")?.has("profile")).toBe(true);
+
+    // Both deletes are queued before either runs.
+    await t.mutation(api.documents.remove, {
+      namespace: "user_a",
+      documentId: a.documentId,
+    });
+    await t.mutation(api.documents.remove, {
+      namespace: "user_b",
+      documentId: b.documentId,
+    });
+    // A pending delete in user_a doesn't block the same id elsewhere.
+    await t.mutation(api.documents.add, {
+      namespace: "user_c",
+      id: "profile",
+      content: "C's profile",
+      maxStatusChecks: 0,
+    });
+    await expect(
+      t.mutation(api.documents.add, {
+        namespace: "user_a",
+        id: "profile",
+        content: "too soon",
+      }),
+    ).rejects.toThrow(/being deleted/);
+    await drain(t);
+
+    expect(fake.namespaces.get("user_a")?.has("profile")).toBe(false);
+    expect(fake.namespaces.get("user_b")?.has("profile")).toBe(false);
+    expect(fake.namespaces.get("user_c")?.has("profile")).toBe(true);
+  });
 });

@@ -40,7 +40,7 @@ export type Filter = Record<string, unknown>;
 export type ThreadMessage = { role: string; content: string };
 
 export type SupermemoryOptions = {
-  /** Status checks per document before polling stops. Defaults to 8. */
+  /** Status checks per document before polling stops. Defaults to 10. */
   maxStatusChecks?: number;
 };
 

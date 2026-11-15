@@ -53,8 +53,10 @@ export default defineSchema({
     rounds: v.optional(v.number()),
     error: v.optional(v.string()),
   })
+    // eslint-disable-next-line @convex-dev/no-duplicate-indexes
     .index("by_namespace", ["namespace"])
-    .index("by_remote_id", ["remoteId"])
+    // Caller-supplied ids repeat across namespaces, so lookups need both.
+    .index("by_namespace_and_remote_id", ["namespace", "remoteId"])
     .index("by_attempts", ["attempts"]),
 
   // A namespace that has been cleared. Late ingestion results check this so

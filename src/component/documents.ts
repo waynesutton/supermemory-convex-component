@@ -145,9 +145,11 @@ export const add = mutation({
       const id = args.id;
       const deleting = await ctx.db
         .query("remoteDeletes")
-        .withIndex("by_remote_id", (q) => q.eq("remoteId", id))
+        .withIndex("by_namespace_and_remote_id", (q) =>
+          q.eq("namespace", args.namespace).eq("remoteId", id),
+        )
         .first();
-      if (deleting?.namespace === args.namespace) {
+      if (deleting) {
         throw new Error("This id is being deleted. Try again shortly.");
       }
       const existing = await ctx.db
@@ -338,7 +340,9 @@ export async function queueRemoteDelete(
 ) {
   const existing = await ctx.db
     .query("remoteDeletes")
-    .withIndex("by_remote_id", (q) => q.eq("remoteId", remoteId))
+    .withIndex("by_namespace_and_remote_id", (q) =>
+      q.eq("namespace", namespace).eq("remoteId", remoteId),
+    )
     .first();
   if (existing) {
     await ctx.db.patch("remoteDeletes", existing._id, {
