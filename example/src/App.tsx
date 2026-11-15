@@ -364,9 +364,15 @@ function Notes({ status }: { status: Status }) {
           {docs.map((doc) => (
             <li key={doc.id}>
               <div className="row">
-                <span className={`pill ${doc.status}`}>
-                  {STATUS_LABEL[doc.status]}
-                </span>
+                {doc.status === "done" &&
+                (doc.memoryStatus === "pending" ||
+                  doc.memoryStatus === "dreaming") ? (
+                  <span className="pill indexing">Building memories</span>
+                ) : (
+                  <span className={`pill ${doc.status}`}>
+                    {STATUS_LABEL[doc.status]}
+                  </span>
+                )}
                 <button
                   className="link danger"
                   aria-label="Delete note"
@@ -508,8 +514,8 @@ function ProfilePanel({ paused }: { paused: boolean }) {
       </p>
       {empty && (
         <p className="muted">
-          Nothing learned yet. Memories can take a minute or two after a note
-          shows Ready.
+          Nothing learned yet. Memories appear once a note stops showing
+          Building memories.
         </p>
       )}
       {profile && !empty && (

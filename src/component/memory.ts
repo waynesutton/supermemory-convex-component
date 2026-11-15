@@ -23,6 +23,7 @@ export const search = action({
       v.union(v.literal("none"), v.literal("order"), v.literal("aggregate")),
     ),
     rewriteQuery: v.optional(v.boolean()),
+    filter: v.optional(v.any()),
   },
   returns: v.object({
     results: v.array(vSearchResult),
@@ -44,6 +45,7 @@ export const search = action({
         threshold: args.threshold,
         rerank: args.rerank,
         rewriteQuery: args.rewriteQuery,
+        filter: args.filter,
       });
       return {
         searchTime: response.searchTime,
@@ -66,6 +68,7 @@ export const profile = action({
   args: {
     namespace: v.string(),
     buckets: v.optional(v.array(v.string())),
+    filter: v.optional(v.any()),
   },
   returns: v.object({
     static: v.array(vMemoryItem),
@@ -77,6 +80,7 @@ export const profile = action({
     try {
       const { profile } = await createClient().profile(args.namespace, {
         buckets: args.buckets,
+        filter: args.filter,
       });
       const pick = (items: { id: string; memory: string }[] | undefined) =>
         (items ?? []).map((i) => ({ id: i.id, memory: i.memory }));

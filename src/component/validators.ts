@@ -15,6 +15,16 @@ export const documentStatus = v.union(
   v.literal("deleting"),
 );
 
+export const memoryStatus = v.union(
+  v.literal("pending"),
+  v.literal("dreaming"),
+  v.literal("done"),
+);
+
+export const dreamingMode = v.union(v.literal("dynamic"), v.literal("instant"));
+
+export const taskType = v.union(v.literal("memory"), v.literal("superrag"));
+
 export const metadataValue = v.union(
   v.string(),
   v.number(),
@@ -31,6 +41,7 @@ export const vDocument = v.object({
   summary: v.optional(v.string()),
   metadata: v.optional(v.record(v.string(), metadataValue)),
   status: documentStatus,
+  memoryStatus: v.optional(memoryStatus),
   error: v.optional(v.string()),
   createdAt: v.number(),
   updatedAt: v.number(),

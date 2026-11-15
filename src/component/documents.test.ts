@@ -41,6 +41,7 @@ describe("documents", () => {
       documentId,
     });
     expect(doc?.status).toBe("done");
+    expect(doc?.memoryStatus).toBe("done");
     expect(doc?.summary).toBe("Fake summary");
     expect(fake.namespaces.get("user_a")?.size).toBe(1);
 
@@ -124,7 +125,7 @@ describe("documents", () => {
     expect(stored[0].content).toBe("retry me");
   });
 
-  test("a request that landed before timing out is not sent twice", async () => {
+  test("a request that landed before timing out is re-sent as the same snapshot", async () => {
     const { t, fake } = setup();
     const { documentId } = await t.mutation(api.documents.add, {
       namespace: "user_a",
@@ -151,10 +152,7 @@ describe("documents", () => {
       ]),
     );
     await drain(t);
-    const adds = fake.calls.filter(
-      (c) => c.method === "POST" && c.path.endsWith("/document"),
-    );
-    expect(adds).toHaveLength(0);
+    expect(fake.calls.filter((c) => c.method === "GET")).toHaveLength(0);
     expect(
       fake.namespaces.get("user_a")!.get(`cvx_${documentId}`)!.content,
     ).toBe("landed");
@@ -295,7 +293,7 @@ describe("namespaces", () => {
     await drain(t);
 
     expect(await t.query(api.documents.count, { namespace: "user_a" })).toBe(0);
-    expect(fake.namespaces.has("user_a")).toBe(false);
+    expect(fake.namespaces.get("user_a")?.size).toBe(0);
     expect(await t.query(api.documents.count, { namespace: "user_b" })).toBe(1);
     expect(fake.namespaces.get("user_b")?.size).toBe(1);
     const status = await t.query(api.namespaces.deletionStatus, {
@@ -414,6 +412,7 @@ describe("review fixes", () => {
       documentId: id,
       namespace: "user_a",
       remoteId: `cvx_${documentId}`,
+      revision: 0,
       error: "Supermemory timed out",
       retryable: true,
     });
@@ -467,7 +466,10 @@ describe("review fixes", () => {
       maxStatusChecks: 0,
     });
     await drain(t);
-    await t.mutation(api.namespaces.deleteNamespace, { namespace: "user_a" });
+    await t.mutation(api.namespaces.deleteNamespace, {
+      namespace: "user_a",
+      remote: "namespace",
+    });
     await drain(t);
     // Something lands remotely after the delete finished.
     fake.namespaces.set(
@@ -477,6 +479,166 @@ describe("review fixes", () => {
       ]),
     );
     await t.action(internal.namespaces.sweep, { namespace: "user_a" });
+    expect(fake.namespaces.has("user_a")).toBe(false);
+  });
+});
+
+describe("caller ids, memory status and scoped deletes", () => {
+  test("adds with the same id update one document", async () => {
+    const { t, fake } = setup();
+    const first = await t.mutation(api.documents.add, {
+      namespace: "user_a",
+      id: "thread_1",
+      content: "user: hi",
+      maxStatusChecks: 0,
+    });
+    await drain(t);
+    const second = await t.mutation(api.documents.add, {
+      namespace: "user_a",
+      id: "thread_1",
+      content: "user: hi\n\nassistant: hello",
+      maxStatusChecks: 0,
+    });
+    await drain(t);
+    expect(second.documentId).toBe(first.documentId);
+    expect(await t.query(api.documents.count, { namespace: "user_a" })).toBe(1);
+    const remote = fake.namespaces.get("user_a")!;
+    expect(remote.size).toBe(1);
+    expect(remote.get("thread_1")!.content).toBe(
+      "user: hi\n\nassistant: hello",
+    );
+  });
+
+  test("an update while an ingest is in flight sends the latest content after it", async () => {
+    const { t, fake } = setup();
+    const { documentId } = await t.mutation(api.documents.add, {
+      namespace: "user_a",
+      id: "thread_2",
+      content: "one",
+      maxStatusChecks: 0,
+    });
+    const id = await t.run(async (ctx) =>
+      ctx.db.normalizeId("documents", documentId)!,
+    );
+    await t.mutation(internal.documents.beginIngest, { documentId: id });
+    await t.mutation(api.documents.add, {
+      namespace: "user_a",
+      id: "thread_2",
+      content: "one two",
+      maxStatusChecks: 0,
+    });
+    await t.mutation(internal.documents.markSubmitted, {
+      documentId: id,
+      namespace: "user_a",
+      remoteId: "thread_2",
+      revision: 0,
+      status: "queued",
+    });
+    await drain(t);
+    const posts = fake.calls.filter((c) => c.method === "POST");
+    expect(posts.map((c) => c.body.content)).toEqual(["one two"]);
+    const doc = await t.query(api.documents.get, {
+      namespace: "user_a",
+      documentId,
+    });
+    expect(doc?.status).toBe("queued");
+  });
+
+  test("rejects ids that collide with generated ones", async () => {
+    const { t } = setup();
+    await expect(
+      t.mutation(api.documents.add, {
+        namespace: "user_a",
+        id: "cvx_abc",
+        content: "x",
+      }),
+    ).rejects.toThrow(/cvx_/);
+  });
+
+  test("done content keeps polling until memories are ready", async () => {
+    const { t, fake } = setup();
+    fake.state.dreamingStatus = "dreaming";
+    const { documentId } = await t.mutation(api.documents.add, {
+      namespace: "user_a",
+      content: "Alex prefers tea",
+      maxStatusChecks: 2,
+    });
+    await drain(t);
+    let doc = await t.query(api.documents.get, {
+      namespace: "user_a",
+      documentId,
+    });
+    expect(doc?.status).toBe("done");
+    expect(doc?.memoryStatus).toBe("dreaming");
+
+    fake.state.dreamingStatus = "done";
+    expect(
+      await t.mutation(api.documents.refreshStatus, {
+        namespace: "user_a",
+        documentId,
+      }),
+    ).toBe(true);
+    await drain(t);
+    doc = await t.query(api.documents.get, { namespace: "user_a", documentId });
+    expect(doc?.memoryStatus).toBe("done");
+  });
+
+  test("add forwards dreaming and taskType", async () => {
+    const { t, fake } = setup();
+    await t.mutation(api.documents.add, {
+      namespace: "user_a",
+      content: "x",
+      dreaming: "instant",
+      taskType: "superrag",
+      maxStatusChecks: 0,
+    });
+    await drain(t);
+    const post = fake.calls.find((c) => c.method === "POST")!;
+    expect(post.body.dreaming).toBe("instant");
+    expect(post.body.taskType).toBe("superrag");
+  });
+
+  test("deleteNamespace leaves data written outside the component", async () => {
+    const { t, fake } = setup();
+    await t.mutation(api.documents.add, {
+      namespace: "user_a",
+      content: "ours",
+      maxStatusChecks: 0,
+    });
+    await drain(t);
+    fake.namespaces.get("user_a")!.set("connector_doc", {
+      id: "connector_doc",
+      content: "theirs",
+      status: "done",
+      metadata: {},
+    });
+    await t.mutation(api.namespaces.deleteNamespace, { namespace: "user_a" });
+    await drain(t);
+    expect([...fake.namespaces.get("user_a")!.keys()]).toEqual([
+      "connector_doc",
+    ]);
+    expect(
+      fake.calls.some((c) => c.method === "DELETE" && c.path === "/ns/user_a"),
+    ).toBe(false);
+    expect(
+      (await t.query(api.namespaces.deletionStatus, { namespace: "user_a" }))
+        ?.status,
+    ).toBe("deleted");
+  });
+
+  test("remote: namespace wipes the whole remote namespace", async () => {
+    const { t, fake } = setup();
+    await t.mutation(api.documents.add, {
+      namespace: "user_a",
+      content: "ours",
+      maxStatusChecks: 0,
+    });
+    await drain(t);
+    await t.mutation(api.namespaces.deleteNamespace, {
+      namespace: "user_a",
+      remote: "namespace",
+    });
+    await drain(t);
     expect(fake.namespaces.has("user_a")).toBe(false);
   });
 });

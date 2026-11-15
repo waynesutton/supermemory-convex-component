@@ -1,6 +1,12 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { documentStatus, metadataValue } from "./validators.js";
+import {
+  documentStatus,
+  dreamingMode,
+  memoryStatus,
+  metadataValue,
+  taskType,
+} from "./validators.js";
 
 export default defineSchema({
   documents: defineTable({
@@ -15,6 +21,11 @@ export default defineSchema({
     // looked up before retrying instead of appending the content twice.
     remoteId: v.string(),
     status: documentStatus,
+    memoryStatus: v.optional(memoryStatus),
+    dreaming: v.optional(dreamingMode),
+    taskType: v.optional(taskType),
+    revision: v.optional(v.number()),
+    ingestStartedAt: v.optional(v.number()),
     error: v.optional(v.string()),
     ingestAttempts: v.number(),
     statusChecks: v.number(),
@@ -25,6 +36,7 @@ export default defineSchema({
     // eslint-disable-next-line @convex-dev/no-duplicate-indexes
     .index("by_namespace", ["namespace"])
     .index("by_namespace_and_request", ["namespace", "requestId"])
+    .index("by_namespace_and_remote_id", ["namespace", "remoteId"])
     .index("by_remote_id", ["remoteId"]),
 
   // Remote deletes that still have to reach Supermemory. A row stays until the
@@ -49,6 +61,7 @@ export default defineSchema({
   // deleted data can't come back.
   namespaceDeletions: defineTable({
     namespace: v.string(),
+    remote: v.optional(v.union(v.literal("documents"), v.literal("namespace"))),
     status: v.union(
       v.literal("pending"),
       v.literal("deleted"),

@@ -29,10 +29,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         {
           content: string;
+          dreaming?: "dynamic" | "instant";
+          id?: string;
           maxStatusChecks?: number;
           metadata?: Record<string, string | number | boolean | Array<string>>;
           namespace: string;
           requestId?: string;
+          taskType?: "memory" | "superrag";
           title?: string;
         },
         { deduplicated: boolean; documentId: string },
@@ -54,6 +57,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           createdAt: number;
           error?: string;
           id: string;
+          memoryStatus?: "pending" | "dreaming" | "done";
           metadata?: Record<string, string | number | boolean | Array<string>>;
           namespace: string;
           requestId?: string;
@@ -82,6 +86,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           createdAt: number;
           error?: string;
           id: string;
+          memoryStatus?: "pending" | "dreaming" | "done";
           metadata?: Record<string, string | number | boolean | Array<string>>;
           namespace: string;
           requestId?: string;
@@ -134,7 +139,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       profile: FunctionReference<
         "action",
         "internal",
-        { buckets?: Array<string>; namespace: string },
+        { buckets?: Array<string>; filter?: any; namespace: string },
         {
           buckets: Record<string, Array<{ id: string; memory: string }>>;
           dynamic: Array<{ id: string; memory: string }>;
@@ -146,6 +151,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "action",
         "internal",
         {
+          filter?: any;
           limit?: number;
           namespace: string;
           query: string;
@@ -172,7 +178,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       deleteNamespace: FunctionReference<
         "mutation",
         "internal",
-        { namespace: string },
+        { namespace: string; remote?: "documents" | "namespace" },
         null,
         Name
       >;
