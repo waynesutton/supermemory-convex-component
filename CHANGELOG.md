@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 (2026-11-15)
+
+- README: architecture diagram, plus links to the Supermemory site, docs and quickstart. No code changes.
+
 ## 0.1.1 (2026-11-12)
 
 - Listed in the Convex components directory. README now shows the directory badge, so the npm page picks it up.
