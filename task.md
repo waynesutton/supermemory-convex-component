@@ -17,3 +17,14 @@
 - [x] Host the demo: https://whimsical-buzzard-500.convex.site
 - [x] Set production Turnstile keys
 - [x] Listed in the components directory: https://www.convex.dev/components/waynesutton/convex-supermemory
+
+## Completed
+
+- [x] 2026-11-15 23:41 UTC Merged PR #2 from the Supermemory team: caller ids, `memoryStatus`, scoped namespace deletes, `memoryContext` and `saveThread`, `dreaming`, `taskType` and `filter` pass-through. `src/component/*`, `src/client/index.ts`, `example/convex/demo.ts`, `example/src/App.tsx`. Verified: 49 tests, typecheck, lint; live run on the dev deployment covered update by id, a repeated snapshot, `memoryStatus`, search, and both delete modes.
+- [x] 2026-11-15 23:41 UTC Fixed remote delete lookups matching the same id across namespaces. `src/component/documents.ts`, `src/component/schema.ts`. Verified: new regression test fails without the fix, passes with it.
+- [x] 2026-11-15 23:41 UTC Added client tests for `saveThread` and `memoryContext`. `src/client/index.test.ts`. Verified: 4 tests pass.
+
+## To Do
+
+- [ ] Publish 0.2.0 (the PR #2 changes) to npm
+- [ ] Redeploy the hosted demo so it shows "Building memories"

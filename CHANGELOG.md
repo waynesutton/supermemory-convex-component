@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (2026-11-15)
 
 - `add` takes an optional `id`. A repeated `id` updates one document with the
   new full content, sent in order after any in-flight attempt.
@@ -16,6 +16,8 @@
   Default `maxStatusChecks` is 10.
 - Demo: notes use instant dreaming and show "Building memories" until memories
   are ready.
+- Fixed: deleting a document no longer gets skipped when another namespace has
+  a pending delete for the same caller-supplied `id`.
 
 ## 0.1.2 (2026-11-15)
 

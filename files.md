@@ -5,10 +5,10 @@
 | File | What it does |
 | --- | --- |
 | `convex.config.ts` | Defines the `supermemory` component and its `SUPERMEMORY_API_KEY` env var |
-| `schema.ts` | `documents`, `remoteDeletes`, `namespaceDeletions` tables |
-| `documents.ts` | `add`, `get`, `list`, `count`, `remove`, `refreshStatus`, plus the ingest, status-check and remote-delete jobs |
-| `namespaces.ts` | `deleteNamespace` and its local purge, remote delete and retry |
-| `memory.ts` | `search` and `profile` actions |
+| `schema.ts` | `documents`, `remoteDeletes`, `namespaceDeletions` tables and their indexes |
+| `documents.ts` | `add` (with optional caller `id`), `get`, `list`, `count`, `remove`, `refreshStatus`, plus the ingest, status and memory-status checks, and remote-delete jobs |
+| `namespaces.ts` | `deleteNamespace` in two modes (this component's documents, or the whole remote namespace), with purge, drain check and retry |
+| `memory.ts` | `search` and `profile` actions, with optional `filter` |
 | `provider.ts` | SDK client, error mapping, backoff. No functions |
 | `validators.ts`, `limits.ts` | Shared validators and constants, safe to import from app code |
 | `documents.test.ts` | Component tests |
@@ -17,7 +17,8 @@
 
 | File | What it does |
 | --- | --- |
-| `src/client/index.ts` | `Supermemory` class and re-exported validators |
+| `src/client/index.ts` | `Supermemory` class, `memoryContext` and `saveThread` agent helpers, re-exported validators |
+| `src/client/index.test.ts` | Tests for the agent helpers through a small host app |
 | `src/test.ts` | `register` helper for convex-test, exported as `/test` |
 | `src/testing/fakeSupermemory.ts` | In-memory Supermemory API for tests. Not built |
 

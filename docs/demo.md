@@ -31,8 +31,8 @@ them. Direct calls to the backend get the same checks as the UI.
 | Supermemory calls        | 500 per UTC day across everyone   | `DEMO_DAILY_PROVIDER_CALLS`       |
 | Emergency stop           | `DEMO_PAUSED=true`                | stops adds, searches and profiles |
 
-Each add reserves its worst case up front: 5 calls for ingest retries plus 6
-status checks, 11 in all. That's about 45 adds a day at the default budget,
+Each add reserves its worst case up front: 3 ingest attempts plus 6 status
+checks, 9 in all. That's about 55 adds a day at the default budget,
 before any searches. Raise `DEMO_DAILY_PROVIDER_CALLS` if you want more. The cap
 counts calls, not dollars.
 
