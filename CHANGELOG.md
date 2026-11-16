@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 (2026-11-16)
+
+- README: removed the architecture diagram image. No code changes.
+
 ## 0.2.0 (2026-11-15)
 
 - `add` takes an optional `id`. A repeated `id` updates one document with the

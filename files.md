@@ -40,6 +40,6 @@
 | --- | --- |
 | `scripts/generate-auth-keys.mjs` | Prints `JWT_PRIVATE_KEY` and `JWKS` for Convex Auth |
 | `docs/demo.md` | Limits, reset and production checklist |
-| `docs/diagrams/` | Architecture diagram as PNG, PDF and SVG. The README shows the PNG |
+| `docs/diagrams/` | Architecture diagram as PNG, PDF and SVG. Not shown in the README |
 | `docs/submission.md` | Directory listing copy and checklist |
 | `plans/`, `prds/` | Approved plan and PRD |
